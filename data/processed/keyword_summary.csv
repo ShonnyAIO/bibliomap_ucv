@@ -1,61 +1,61 @@
 ﻿keyword,frequency,type
-intelligence,86,keyword
-chatgpt,66,keyword
-students,65,keyword
-such,65,keyword
-artificial,60,keyword
-knowledge,60,keyword
-technology,57,keyword
-creativity,56,keyword
-challenges,52,keyword
-management,52,keyword
-learning,48,keyword
-data,44,keyword
-potential,44,keyword
-tools,42,keyword
-business,40,keyword
-education,39,keyword
-human,37,keyword
-work,37,keyword
-collective,36,keyword
-generative,35,keyword
-literature,35,keyword
-academic,35,keyword
-development,34,keyword
-thinking,34,keyword
-both,34,keyword
-tasks,33,keyword
-science,33,keyword
-innovation,32,keyword
-scientific,31,keyword
-language,30,keyword
-artificial intelligence,55,bigram
-growth mindset,19,bigram
-collective intelligence,19,bigram
-google scholar,18,bigram
-scopus google,17,bigram
-pubmed scopus,16,bigram
-generative artificial,15,bigram
-business management,15,bigram
-higher education,14,bigram
-industrial revolution,13,bigram
-language models,9,bigram
-academic integrity,9,bigram
-digital transformation,8,bigram
-critical thinking,8,bigram
-large language,7,bigram
-fourth industrial,7,bigram
-autonomous agents,7,bigram
-such chatgpt,7,bigram
-relational knowledge,7,bigram
-associative thinking,7,bigram
-systematic literature,6,bigram
-language model,6,bigram
-natural language,6,bigram
-management scholars,6,bigram
-fostering growth,6,bigram
-full text,6,bigram
-group members,6,bigram
-ai-generated content,6,bigram
-collective creativity,5,bigram
-human capital,5,bigram
+habilidades,258,keyword
+blandas,197,keyword
+desarrollo,59,keyword
+estudiantes,55,keyword
+formacion,42,keyword
+laboral,35,keyword
+educacion,32,keyword
+skills,29,keyword
+objetivo,29,keyword
+desempeno,26,keyword
+nivel,24,keyword
+relacion,23,keyword
+superior,22,keyword
+profesional,22,keyword
+trabajo,22,keyword
+importancia,21,keyword
+comunicacion,21,keyword
+presente,21,keyword
+docente,20,keyword
+soft,20,keyword
+proceso,20,keyword
+aprendizaje,19,keyword
+resultados,19,keyword
+universidad,18,keyword
+tipo,18,keyword
+integral,17,keyword
+ingenieria,16,keyword
+profesionales,15,keyword
+informacion,15,keyword
+universitario,14,keyword
+habilidades blandas,192,bigram
+desarrollo habilidades,29,bigram
+soft skills,20,bigram
+blandas estudiantes,16,bigram
+educacion superior,14,bigram
+desempeno docente,13,bigram
+importancia habilidades,12,bigram
+habilidades duras,10,bigram
+estudiantes universitarios,7,bigram
+trabajo equipo,7,bigram
+formacion integral,6,bigram
+estudiantes ingenieria,6,bigram
+formacion profesional,6,bigram
+contexto universitario,6,bigram
+blandas soft,6,bigram
+toma decisiones,6,bigram
+enfoque cuantitativo,6,bigram
+blandas desempeno,5,bigram
+nivel superior,5,bigram
+blandas contexto,5,bigram
+liderazgo directivo,5,bigram
+hombres mujeres,5,bigram
+proyecto vida,5,bigram
+ambito laboral,5,bigram
+desarrollo integral,5,bigram
+habilidades socioemocionales,5,bigram
+comunicacion asertiva,5,bigram
+metodologia utilizada,5,bigram
+resultados obtenidos,5,bigram
+objetivo presente,5,bigram

@@ -34,6 +34,25 @@ from modules.gap_suggester import (
     save_extended_outputs,
 )
 from modules.generate_report import generate_report, generate_pdf_report
+from modules.database import (
+    initialize_db,
+    get_users,
+    create_user,
+    get_user_by_id,
+    update_user,
+    delete_user,
+    get_user_interests,
+    add_user_interest,
+    remove_user_interest,
+    get_user_preferences,
+    update_user_preference,
+    get_notification_history
+)
+from modules.notifier import (
+    send_notification_multichannel,
+    process_whatsapp_queue,
+    match_and_notify_users
+)
 
 
 LOGO_LEGIN = IMAGES_DIR / "logo_legin.png"
@@ -170,6 +189,7 @@ def render_sidebar() -> str:
                 "Publicaciones",
                 "Brechas preliminares",
                 "Reporte preliminar",
+                "Usuarios y Notificaciones",
                 "Aprender bibliometría",
             ],
         )
@@ -485,7 +505,15 @@ def page_buscar_tema() -> None:
             st.session_state.understudied_results = understudied_df
             st.session_state.opportunity_results = opportunity_df
 
+            # Disparar coincidencia de intereses y notificaciones
+            with st.spinner("Comprobando intereses de investigadores y enviando alertas..."):
+                reports = match_and_notify_users(df)
+
             st.success(f"Consulta completada. Registros recuperados: {len(df)}")
+            if reports:
+                st.info(f"Se dispararon {len(reports)} alertas de artículos de interés a los investigadores.")
+                for r in reports:
+                    st.caption(f"📢 {r['usuario']} -> {r['interes']}: '{r['articulo']}'")
             st.caption(f"Archivo guardado en: {output_path}")
             st.caption(f"Agrupaciones geográficas guardadas en: {PROCESSED_DIR}")
 
@@ -1888,12 +1916,203 @@ def render_footer() -> None:
     )
 
 
+def page_notificaciones_perfil() -> None:
+    st.markdown("## Perfiles de Usuario y Notificaciones Multicanal")
+    st.write(
+        """
+        Gestiona los perfiles de los investigadores, sus temas de interés académico
+        y configura los canales (Gmail, Telegram, WhatsApp) para recibir alertas 
+        automáticas cuando se encuentren publicaciones coincidentes.
+        """
+    )
+
+    # User selection
+    usuarios = get_users()
+    options = {f"{u['nombre']} ({u['email']})": u['id'] for u in usuarios}
+    
+    col_sel, col_new = st.columns([3, 1])
+    with col_sel:
+        selected_user_label = st.selectbox(
+            "Seleccionar Investigador", 
+            options=list(options.keys()) + ["-- Crear Nuevo Perfil --"]
+        )
+    
+    user_id = None
+    is_new_user = selected_user_label == "-- Crear Nuevo Perfil --"
+    
+    if not is_new_user:
+        user_id = options[selected_user_label]
+        user_data = get_user_by_id(user_id)
+    else:
+        user_data = {"nombre": "", "email": "", "telefono": ""}
+
+    st.markdown("### 👤 Datos Personales")
+    with st.form("user_profile_form"):
+        nombre = st.text_input("Nombre Completo", value=user_data["nombre"])
+        email = st.text_input("Correo Electrónico", value=user_data["email"])
+        telefono = st.text_input("Teléfono Celular (WhatsApp)", value=user_data["telefono"], help="Ejemplo: +584121234567")
+        
+        save_profile = st.form_submit_button("Guardar Perfil")
+        
+        if save_profile:
+            if not nombre or not email:
+                st.error("El nombre y correo electrónico son obligatorios.")
+            else:
+                if is_new_user:
+                    create_user(nombre, email, telefono)
+                    st.success("Perfil creado exitosamente.")
+                    st.rerun()
+                else:
+                    update_user(user_id, nombre, email, telefono)
+                    st.success("Perfil actualizado exitosamente.")
+                    st.rerun()
+
+    if user_id:
+        st.divider()
+        col_interests, col_channels = st.columns(2)
+
+        with col_interests:
+            st.markdown("### 📚 Temas de Interés")
+            intereses = get_user_interests(user_id)
+            
+            if intereses:
+                st.write("Palabras clave registradas:")
+                for i, interes in enumerate(intereses):
+                    c_text, c_btn = st.columns([4, 1])
+                    c_text.markdown(f"- **{interes}**")
+                    if c_btn.button("🗑️", key=f"del_int_{i}_{interes}"):
+                        remove_user_interest(user_id, interes)
+                        st.success(f"Interés '{interes}' eliminado.")
+                        st.rerun()
+            else:
+                st.info("No tienes temas de interés registrados todavía.")
+
+            st.write("---")
+            with st.form("add_interest_form"):
+                nuevo_interes = st.text_input("Agregar nueva palabra clave de interés")
+                add_btn = st.form_submit_button("Agregar Interés")
+                if add_btn and nuevo_interes.strip():
+                    added = add_user_interest(user_id, nuevo_interes)
+                    if added:
+                        st.success(f"Interés '{nuevo_interes}' agregado.")
+                        st.rerun()
+                    else:
+                        st.warning("Ese interés ya está registrado o está vacío.")
+
+        with col_channels:
+            st.markdown("### 🔔 Configuración de Canales")
+            prefs = get_user_preferences(user_id)
+            
+            # SMTP
+            smtp_active = st.checkbox("Correo Electrónico (Gmail SMTP)", value=prefs.get("SMTP", {}).get("activo", False))
+            
+            # Telegram
+            tg_active = st.checkbox("Telegram (Bot API)", value=prefs.get("TELEGRAM", {}).get("activo", False))
+            tg_chat_id = st.text_input(
+                "ID de Chat de Telegram", 
+                value=prefs.get("TELEGRAM", {}).get("config", {}).get("chat_id", ""),
+                help="Puedes obtener tu ID iniciando chat con @userinfobot en Telegram."
+            )
+            
+            # WhatsApp
+            wa_active = st.checkbox("WhatsApp (API WAHA)", value=prefs.get("WHATSAPP", {}).get("activo", False))
+            
+            save_prefs = st.button("Guardar Preferencias de Canal")
+            if save_prefs:
+                update_user_preference(user_id, "SMTP", smtp_active, {})
+                update_user_preference(user_id, "TELEGRAM", tg_active, {"chat_id": tg_chat_id})
+                update_user_preference(user_id, "WHATSAPP", wa_active, {})
+                st.success("Preferencias guardadas exitosamente.")
+                st.rerun()
+
+            st.write("---")
+            st.markdown("#### 🧪 Pruebas de Notificación")
+            if st.button("Enviar Alerta de Prueba"):
+                with st.spinner("Enviando alertas de prueba..."):
+                    res = send_notification_multichannel(
+                        user_id=user_id,
+                        title="[PRUEBA] Alerta de Inteligencia Artificial en BiblioMap",
+                        link="https://openalex.org/W12345678",
+                        summary="Esta es una notificación de prueba para validar tus canales de comunicación activos."
+                    )
+                st.write("Resultados del envío:")
+                for canal, status in res.items():
+                    if status == "EXITOSO":
+                        st.success(f"{canal}: {status}")
+                    elif "ENCOLADO" in status:
+                        st.info(f"{canal}: {status}")
+                    else:
+                        st.error(f"{canal}: {status}")
+
+        st.divider()
+        st.markdown("### 📥 Cola y Control Anti-Baneo de WhatsApp")
+        col_queue_status, col_queue_action = st.columns([3, 1])
+        
+        from modules.database import get_pending_notifications
+        pending = get_pending_notifications()
+        
+        with col_queue_status:
+            if pending:
+                st.warning(f"Hay {len(pending)} alertas pendientes de envío en la cola de WhatsApp.")
+                queue_data = [{"ID": p["id"], "Usuario ID": p["usuario_id"], "Artículo": p["titulo_articulo"], "Creado en": p["creado_en"]} for p in pending]
+                st.dataframe(pd.DataFrame(queue_data))
+            else:
+                st.success("La cola de WhatsApp está vacía. Todos los mensajes han sido enviados.")
+                
+        with col_queue_action:
+            if st.button("Procesar Cola de WhatsApp"):
+                with st.spinner("Procesando cola..."):
+                    sent = process_whatsapp_queue()
+                if sent > 0:
+                    st.success(f"Se enviaron {sent} mensajes de WhatsApp pendientes.")
+                else:
+                    st.info("No se enviaron mensajes (aún bajo el límite de tiempo de 1 minuto o cola vacía).")
+                st.rerun()
+
+        st.divider()
+        st.markdown("### 📜 Historial de Alertas Enviadas")
+        history = get_notification_history(user_id)
+        if history:
+            df_hist = pd.DataFrame(history)
+            st.dataframe(df_hist[["enviado_en", "canal", "titulo_articulo", "estado"]])
+        else:
+            st.info("No hay historial de envíos registrado para este usuario.")
+
+
+def start_queue_worker() -> None:
+    """Starts a background thread to process the WhatsApp queue automatically."""
+    import threading
+    # Check if worker thread is already running to avoid duplicates
+    for t in threading.enumerate():
+        if t.name == "BiblioMapQueueWorker":
+            return
+            
+    def run_worker():
+        import time
+        from modules.notifier import process_whatsapp_queue
+        while True:
+            try:
+                process_whatsapp_queue()
+            except Exception:
+                pass
+            time.sleep(15) # Check queue every 15 seconds
+            
+    thread = threading.Thread(target=run_worker, name="BiblioMapQueueWorker", daemon=True)
+    thread.start()
+
+
 def main() -> None:
     st.set_page_config(
         page_title="BiblioMap",
         page_icon="📚",
         layout="wide",
     )
+
+    # Initialize the notification database
+    initialize_db()
+
+    # Start background queue worker for WhatsApp
+    start_queue_worker()
 
     init_session_state()
     load_css()
@@ -1922,6 +2141,9 @@ def main() -> None:
 
     elif menu == "Reporte preliminar":
         page_reporte_preliminar()
+
+    elif menu == "Usuarios y Notificaciones":
+        page_notificaciones_perfil()
 
     elif menu == "Aprender bibliometría":
         page_aprender_bibliometria()

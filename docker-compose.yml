@@ -1,0 +1,16 @@
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: waha
+    ports:
+      - "3000:3000"
+    environment:
+      # Print WhatsApp Web QR code directly to docker logs (terminal)
+      - WAHA_PRINT_QR=true
+      # Fixed credentials to avoid random generation on every start
+      - WAHA_API_KEY=bibliomap_secure_key_2026
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=bibliomap_dashboard_pass_2026
+      - WHATSAPP_SWAGGER_USERNAME=admin
+      - WHATSAPP_SWAGGER_PASSWORD=bibliomap_dashboard_pass_2026
+    restart: unless-stopped
