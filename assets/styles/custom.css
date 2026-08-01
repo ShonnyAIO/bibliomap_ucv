@@ -55,6 +55,16 @@
     padding-bottom: 2rem;
 }
 
+/* Ocultar elementos secundarios de la barra superior (Share, Favorito, Edición, GitHub, Menú) */
+div[data-testid="stToolbar"],
+div[data-testid="stHeaderActionElements"],
+div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"],
+#MainMenu {
+    display: none !important;
+    visibility: hidden !important;
+}
+
 h1, h2, h3 {
     color: #0B2E59;
 }

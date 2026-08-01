@@ -107,7 +107,15 @@ def load_css() -> None:
     st.markdown(
         """
         <style>
-        /* Estilos generales de notas y componentes */
+        /* Ocultar elementos secundarios de la barra superior (Share, Favorito, Edición, GitHub, Menú) */
+        div[data-testid="stToolbar"],
+        div[data-testid="stHeaderActionElements"],
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"],
+        #MainMenu {
+            display: none !important;
+            visibility: hidden !important;
+        }
 
         .reference-note {
             max-width: 980px;
@@ -143,22 +151,6 @@ MENU_OPTIONS = [
     "Aprender bibliometría",
 ]
 
-
-def render_top_navigation() -> str:
-    """Renders a responsive top navigation dropdown menu accessible directly on mobile/desktop."""
-    current_page = st.session_state.get("current_page", "Inicio")
-    current_idx = MENU_OPTIONS.index(current_page) if current_page in MENU_OPTIONS else 0
-
-    st.markdown('<div class="mobile-top-nav" style="margin-bottom: 1rem;">', unsafe_allow_html=True)
-    selected = st.selectbox(
-        "🗺️ Menú de navegación por módulos",
-        MENU_OPTIONS,
-        index=current_idx,
-        key="top_select_nav",
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.session_state.current_page = selected
-    return selected
 
 
 def init_session_state() -> None:
@@ -2329,9 +2321,7 @@ def main() -> None:
 
     init_session_state()
     load_css()
-    render_top_navigation()
-    render_sidebar()
-    menu = st.session_state.current_page
+    menu = render_sidebar()
 
     if menu == "Inicio":
         page_inicio()
