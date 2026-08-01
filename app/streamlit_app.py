@@ -107,9 +107,24 @@ def load_css() -> None:
     st.markdown(
         """
         <style>
-        /* Ocultar header, toolbar y menú de Streamlit */
+        /* Mantener la cabecera transparente para permitir el botón de menú en mobile */
         header[data-testid="stHeader"] {
-            display: none !important;
+            background-color: transparent !important;
+            background: transparent !important;
+            pointer-events: none !important;
+        }
+
+        header[data-testid="stHeader"] * {
+            pointer-events: auto;
+        }
+
+        div[data-testid="collapsedControl"],
+        button[data-testid="stSidebarCollapseButton"],
+        [data-testid="stHeaderNav"] {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 100000 !important;
         }
 
         div[data-testid="stToolbar"] {

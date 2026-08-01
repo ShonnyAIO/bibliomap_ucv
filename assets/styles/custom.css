@@ -55,9 +55,24 @@
     padding-bottom: 2rem;
 }
 
-/* Ocultar barra superior, toolbar, menú desplegable y decoración de Streamlit */
+/* Ocultar toolbar, menú desplegable y decoración de Streamlit, pero mantener el botón del menú lateral */
 header[data-testid="stHeader"] {
-    display: none !important;
+    background-color: transparent !important;
+    background: transparent !important;
+    pointer-events: none !important;
+}
+
+header[data-testid="stHeader"] * {
+    pointer-events: auto;
+}
+
+div[data-testid="collapsedControl"],
+button[data-testid="stSidebarCollapseButton"],
+[data-testid="stHeaderNav"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 100000 !important;
 }
 
 div[data-testid="stToolbar"] {
