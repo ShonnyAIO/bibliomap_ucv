@@ -7,5 +7,5 @@ textColor = "#333333"
 font = "sans serif"
 
 [client]
-toolbarMode = "off"
+toolbarMode = "minimal"
 showErrorDetails = false

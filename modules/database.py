@@ -197,6 +197,37 @@ def update_user(user_id: int, nombre: str, email: str, telefono: str):
             WHERE id = ?;
         """, [nombre, email, telefono, user_id])
         conn.commit()
+    except Exception:
+        # Fallback for DuckDB foreign key update constraint limitation
+        try:
+            intereses_rows = conn.execute("SELECT id, usuario_id, palabra_clave, creado_en FROM intereses WHERE usuario_id = ?", [user_id]).fetchall()
+            prefs_rows = conn.execute("SELECT id, usuario_id, canal, activo, configuracion_adicional FROM me_preferencias_canal WHERE usuario_id = ?", [user_id]).fetchall() if False else conn.execute("SELECT id, usuario_id, canal, activo, configuracion_adicional FROM preferencias_canal WHERE usuario_id = ?", [user_id]).fetchall()
+            hist_rows = conn.execute("SELECT id, usuario_id, titulo_articulo, canal_enviado, enviado_en, estado FROM historial_notificaciones WHERE usuario_id = ?", [user_id]).fetchall()
+            cola_rows = conn.execute("SELECT id, usuario_id, titulo_articulo, mensaje, creado_en, enviado FROM cola_notificaciones WHERE usuario_id = ?", [user_id]).fetchall()
+
+            conn.execute("DELETE FROM intereses WHERE usuario_id = ?", [user_id])
+            conn.execute("DELETE FROM preferencias_canal WHERE usuario_id = ?", [user_id])
+            conn.execute("DELETE FROM historial_notificaciones WHERE usuario_id = ?", [user_id])
+            conn.execute("DELETE FROM cola_notificaciones WHERE usuario_id = ?", [user_id])
+
+            conn.execute("""
+                UPDATE usuarios
+                SET nombre = ?, email = ?, telefono = ?
+                WHERE id = ?;
+            """, [nombre, email, telefono, user_id])
+
+            for r in intereses_rows:
+                conn.execute("INSERT INTO intereses VALUES (?, ?, ?, ?)", list(r))
+            for r in prefs_rows:
+                conn.execute("INSERT INTO preferencias_canal VALUES (?, ?, ?, ?, ?)", list(r))
+            for r in hist_rows:
+                conn.execute("INSERT INTO historial_notificaciones VALUES (?, ?, ?, ?, ?, ?)", list(r))
+            for r in cola_rows:
+                conn.execute("INSERT INTO cola_notificaciones WHERE user_id = ?", [user_id]) if False else conn.execute("INSERT INTO cola_notificaciones VALUES (?, ?, ?, ?, ?, ?)", list(r))
+
+            conn.commit()
+        except Exception as e:
+            print(f"Error in update_user fallback: {e}")
     finally:
         conn.close()
 

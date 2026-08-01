@@ -213,7 +213,6 @@ def render_sidebar() -> str:
                 "Publicaciones",
                 "Brechas preliminares",
                 "Reporte preliminar",
-                "Usuarios y Notificaciones",
                 "Aprender bibliometría",
             ],
         )
@@ -1122,7 +1121,7 @@ def page_brechas_preliminares() -> None:
 
     if gap_df.empty:
         st.warning(
-            "Todavía no hay sugerencias de brechas. Primero realiza una búsqueda en la sección 'Buscar tema' o ejecuta py modules\gap_suggester.py."
+            "Todavía no hay sugerencias de brechas. Primero realiza una búsqueda en la sección 'Buscar tema' o ejecuta py modules/gap_suggester.py."
         )
         return
 
@@ -1329,7 +1328,7 @@ def page_brechas_preliminares() -> None:
         )
 
         if trend_df is None or trend_df.empty:
-            st.warning("No hay tendencias disponibles. Ejecuta nuevamente la búsqueda o py modules\gap_suggester.py.")
+            st.warning("No hay tendencias disponibles. Ejecuta nuevamente la búsqueda o py modules/gap_suggester.py.")
         else:
             trend_df = trend_df.fillna("")
 
@@ -1402,7 +1401,7 @@ def page_brechas_preliminares() -> None:
         )
 
         if understudied_df is None or understudied_df.empty:
-            st.warning("No hay áreas poco visibles disponibles. Ejecuta nuevamente la búsqueda o py modules\gap_suggester.py.")
+            st.warning("No hay áreas poco visibles disponibles. Ejecuta nuevamente la búsqueda o py modules/gap_suggester.py.")
         else:
             understudied_df = understudied_df.fillna("")
 
@@ -1487,7 +1486,7 @@ def page_brechas_preliminares() -> None:
         )
 
         if opportunity_df is None or opportunity_df.empty:
-            st.warning("No hay oportunidades disponibles. Ejecuta nuevamente la búsqueda o py modules\gap_suggester.py.")
+            st.warning("No hay oportunidades disponibles. Ejecuta nuevamente la búsqueda o py modules/gap_suggester.py.")
         else:
             opportunity_df = opportunity_df.fillna("")
 
