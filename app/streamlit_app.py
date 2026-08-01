@@ -107,14 +107,26 @@ def load_css() -> None:
     st.markdown(
         """
         <style>
-        /* Ocultar elementos secundarios de la barra superior (Share, Favorito, Edición, GitHub, Menú) */
-        div[data-testid="stToolbar"],
-        div[data-testid="stHeaderActionElements"],
-        div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"],
-        #MainMenu {
-            display: none !important;
-            visibility: hidden !important;
+        /* Estilo para mostrar una barra superior (header) limpia y fija */
+        header[data-testid="stHeader"] {
+            background-color: #FFFFFF !important;
+            border-bottom: 1px solid #E6E6E6 !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 3.5rem !important;
+            z-index: 99999 !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        /* Asegurar visibilidad del botón de despliegue del menú lateral */
+        div[data-testid="collapsedControl"],
+        button[data-testid="stSidebarCollapseButton"] {
+            display: flex !important;
+            visibility: visible !important;
+            z-index: 100000 !important;
         }
 
         .reference-note {
@@ -2310,7 +2322,6 @@ def main() -> None:
         page_title="BiblioMap",
         page_icon="📚",
         layout="wide",
-        initial_sidebar_state="expanded",
     )
 
     # Initialize the notification database
