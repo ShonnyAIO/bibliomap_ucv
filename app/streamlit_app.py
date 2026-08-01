@@ -186,6 +186,42 @@ def load_css() -> None:
     )
 
 
+def render_mobile_menu_button() -> None:
+    """Renders a prominent floating button to open/toggle the left sidebar menu on any device."""
+    st.markdown(
+        """
+        <div class="custom-menu-button-container" style="position: fixed; top: 10px; left: 12px; z-index: 99999999;">
+            <button onclick="
+                const doc = (window.parent && window.parent.document) ? window.parent.document : document;
+                const sidebarBtn = doc.querySelector('button[aria-label*=\\'sidebar\\' i], button[aria-label*=\\'Sidebar\\' i], [data-testid=\\'stSidebarCollapseButton\\'] button, [data-testid=\\'stSidebarCollapseButton\\'], [data-testid=\\'collapsedControl\\'] button, [data-testid=\\'collapsedControl\\']');
+                if (sidebarBtn) {
+                    sidebarBtn.click();
+                }
+            " style="
+                background: linear-gradient(135deg, #0B2E59 0%, #16437E 100%);
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+                border-radius: 8px;
+                padding: 7px 15px;
+                font-size: 14px;
+                font-weight: 700;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(11, 46, 89, 0.4);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                user-select: none;
+                transition: transform 0.15s ease, box-shadow 0.15s ease;
+            " onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+                <span style="font-size: 16px; line-height: 1;">☰</span>
+                <span style="font-family: system-ui, -apple-system, sans-serif;">Menú</span>
+            </button>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def init_session_state() -> None:
     if "openalex_results" not in st.session_state:
         st.session_state.openalex_results = pd.DataFrame()
@@ -2356,6 +2392,7 @@ def main() -> None:
 
     init_session_state()
     load_css()
+    render_mobile_menu_button()
     menu = render_sidebar()
 
     if menu == "Inicio":
