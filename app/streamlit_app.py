@@ -140,6 +140,10 @@ def load_css() -> None:
             margin-bottom: 1.5rem;
         }
 
+        .stToolbarActions{
+            display: none;
+        }
+
         .geo-note {
             font-size: 0.88rem;
             color: #555555;
