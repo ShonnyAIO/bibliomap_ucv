@@ -107,24 +107,45 @@ def load_css() -> None:
     st.markdown(
         """
         <style>
-        /* Mantener la cabecera transparente para permitir el botón de menú en mobile */
+        /* Configuración de la barra superior y botón de menú móvil */
         header[data-testid="stHeader"] {
-            background-color: transparent !important;
-            background: transparent !important;
-            pointer-events: none !important;
-        }
-
-        header[data-testid="stHeader"] * {
-            pointer-events: auto;
+            background-color: rgba(255, 255, 255, 0.96) !important;
+            backdrop-filter: blur(8px) !important;
+            border-bottom: 1px solid #E6E6E6 !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 3.5rem !important;
+            z-index: 999990 !important;
+            display: flex !important;
+            align-items: center !important;
+            pointer-events: auto !important;
         }
 
         div[data-testid="collapsedControl"],
         button[data-testid="stSidebarCollapseButton"],
+        button[aria-label*="sidebar" i],
+        button[aria-label*="Sidebar" i],
         [data-testid="stHeaderNav"] {
             display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
-            z-index: 100000 !important;
+            z-index: 1000000 !important;
+            margin-left: 0.5rem !important;
+            background-color: #0B2E59 !important;
+            color: #FFFFFF !important;
+            border-radius: 0.5rem !important;
+            padding: 0.25rem 0.6rem !important;
+            box-shadow: 0 2px 6px rgba(11, 46, 89, 0.3) !important;
+            border: none !important;
+        }
+
+        div[data-testid="collapsedControl"] svg,
+        button[data-testid="stSidebarCollapseButton"] svg {
+            fill: #FFFFFF !important;
+            color: #FFFFFF !important;
+            stroke: #FFFFFF !important;
         }
 
         div[data-testid="stToolbar"] {
@@ -228,6 +249,7 @@ def render_sidebar() -> str:
                 "Publicaciones",
                 "Brechas preliminares",
                 "Reporte preliminar",
+                "Usuarios y Notificaciones",
                 "Aprender bibliometría",
             ],
         )
@@ -2323,6 +2345,7 @@ def main() -> None:
         page_title="BiblioMap",
         page_icon="📚",
         layout="wide",
+        initial_sidebar_state="expanded",
     )
 
     # Initialize the notification database
