@@ -243,12 +243,16 @@ def process_whatsapp_queue() -> int:
                 
     return sent_count
 
-def match_and_notify_users(df) -> list:
+def match_and_notify_users(df=None) -> list:
     """
-    Scans a DataFrame of articles and matches them against registered user interests.
+    Scans the database (or a DataFrame) of articles and matches them against registered user interests.
     Sends notifications to matched users for new articles they haven't been notified of yet.
     Returns a list of notification reports.
     """
+    if df is None or df.empty:
+        from modules.database import get_publications
+        df = get_publications()
+
     if df.empty:
         return []
 
@@ -288,3 +292,4 @@ def match_and_notify_users(df) -> list:
                         "canales": res
                     })
     return reports
+

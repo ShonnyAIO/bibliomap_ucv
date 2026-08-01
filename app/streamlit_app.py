@@ -46,7 +46,9 @@ from modules.database import (
     remove_user_interest,
     get_user_preferences,
     update_user_preference,
-    get_notification_history
+    get_notification_history,
+    save_publications,
+    get_publications
 )
 from modules.notifier import (
     send_notification_multichannel,
@@ -105,6 +107,28 @@ def load_css() -> None:
     st.markdown(
         """
         <style>
+        /* Ocultar header, toolbar y menú de Streamlit */
+        header[data-testid="stHeader"] {
+            display: none !important;
+        }
+
+        div[data-testid="stToolbar"] {
+            display: none !important;
+        }
+
+        div[data-testid="stDecoration"] {
+            display: none !important;
+        }
+
+        div[data-testid="stStatusWidget"] {
+            display: none !important;
+        }
+
+        #MainMenu {
+            visibility: hidden !important;
+            display: none !important;
+        }
+
         .reference-note {
             max-width: 980px;
             margin-left: auto;
@@ -387,185 +411,348 @@ def get_country_results() -> pd.DataFrame:
     return country_df
 
 
+def _run_full_pipeline(df: pd.DataFrame, tema: str, query: str, year_from: int, year_to: int) -> None:
+    """
+    Ejecuta el pipeline completo de análisis bibliométrico sobre un DataFrame de resultados
+    de OpenAlex: guarda CSV, genera agrupaciones geográficas, brechas, tendencias y
+    dispara notificaciones a investigadores por coincidencia de intereses.
+
+    Args:
+        df: DataFrame con columnas estándar de OpenAlex.
+        tema: Descripción del tema (para metadatos).
+        query: Cadena de búsqueda usada (para metadatos).
+        year_from: Año de inicio del rango de publicaciones.
+        year_to: Año de fin del rango de publicaciones.
+    """
+    st.session_state.openalex_results = df
+    st.session_state.last_query_metadata = {
+        "tema": tema,
+        "query": query,
+        "year_from": year_from,
+        "year_to": year_to,
+        "source": "OpenAlex",
+    }
+
+    output_path = PROCESSED_DIR / "openalex_search_results.csv"
+    save_results(df, output_path)
+    st.caption(f"✅ Archivo guardado en: {output_path}")
+
+    with st.spinner("Cargando resultados en la base de datos DuckDB..."):
+        save_publications(df, tema=tema, query=query)
+    st.caption("✅ Resultados cargados en base de datos local.")
+
+    with st.spinner("Generando agrupaciones geográficas..."):
+        country_df, continent_df = build_and_store_geographic_outputs(df)
+    st.caption("✅ Agrupaciones geográficas generadas.")
+
+    with st.spinner("Detectando brechas preliminares y términos frecuentes..."):
+        gap_df, keyword_df, temporal_df = suggest_preliminary_gaps(
+            df,
+            country_df=country_df,
+            continent_df=continent_df,
+        )
+        save_gap_outputs(gap_df, keyword_df, temporal_df, output_dir=PROCESSED_DIR)
+
+    st.session_state.gap_results = gap_df
+    st.session_state.keyword_results = keyword_df
+    st.session_state.temporal_results = temporal_df
+    st.caption("✅ Brechas y términos procesados.")
+
+    with st.spinner("Calculando tendencias, áreas poco visibles y oportunidades..."):
+        trend_df, understudied_df, opportunity_df = generate_extended_insights(
+            df,
+            gap_df=gap_df,
+            keyword_df=keyword_df,
+            temporal_df=temporal_df,
+            country_df=country_df,
+            continent_df=continent_df,
+        )
+        save_extended_outputs(trend_df, understudied_df, opportunity_df, output_dir=PROCESSED_DIR)
+
+    st.session_state.trend_results = trend_df
+    st.session_state.understudied_results = understudied_df
+    st.session_state.opportunity_results = opportunity_df
+    st.caption("✅ Tendencias y oportunidades calculadas.")
+
+    with st.spinner("Comparando con intereses de investigadores y enviando alertas..."):
+        reports = match_and_notify_users(df)
+
+    if reports:
+        st.info(f"📢 Se dispararon {len(reports)} alertas de artículos de interés a los investigadores.")
+        with st.expander("Ver detalle de alertas enviadas", expanded=False):
+            for r in reports:
+                canales_str = ", ".join(
+                    f"{canal}: {status}" for canal, status in r["canales"].items()
+                ) or "Sin canales activos"
+                st.caption(
+                    f"**{r['usuario']}** | Interés: *{r['interes']}* | "
+                    f"Artículo: '{r['articulo']}' | Canales: {canales_str}"
+                )
+    else:
+        st.info("ℹ️ No se encontraron coincidencias entre los artículos y los intereses registrados, "
+                "o los investigadores aún no tienen canales de notificación activos.")
+
+
 def page_buscar_tema() -> None:
     st.markdown("## Buscar tema")
 
     st.write(
         """
-        Introduce un tema o conjunto de palabras clave. BiblioMap consultará OpenAlex
-        y recuperará metadatos bibliométricos básicos para iniciar el análisis.
+        Introduce un tema o conjunto de palabras clave, o carga directamente un CSV
+        exportado desde OpenAlex. BiblioMap procesará los metadatos bibliométricos
+        y ejecutará el análisis completo, incluyendo notificaciones a investigadores.
         """
     )
 
-    with st.form("search_form"):
-        tema = st.text_input(
-            "Tema de investigación",
-            value="inteligencia artificial y creatividad científica",
-        )
+    tab_buscar, tab_csv = st.tabs(["🔍 Buscar en OpenAlex", "📂 Cargar CSV de OpenAlex"])
 
-        palabras_clave = st.text_input(
-            "Palabras clave para búsqueda en OpenAlex",
-            value="artificial intelligence scientific creativity knowledge production",
-        )
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            year_from = st.number_input(
-                "Año inicial",
-                min_value=1900,
-                max_value=2100,
-                value=2015,
+    # ─────────────────────────────────────────────
+    # TAB 1: Búsqueda en vivo en OpenAlex
+    # ─────────────────────────────────────────────
+    with tab_buscar:
+        with st.form("search_form"):
+            tema = st.text_input(
+                "Tema de investigación",
+                value="inteligencia artificial y creatividad científica",
             )
 
-        with col2:
-            year_to = st.number_input(
-                "Año final",
-                min_value=1900,
-                max_value=2100,
-                value=2026,
+            palabras_clave = st.text_input(
+                "Palabras clave para búsqueda en OpenAlex",
+                value="artificial intelligence scientific creativity knowledge production",
             )
 
-        with col3:
-            max_results = st.number_input(
-                "Máximo de resultados",
-                min_value=10,
-                max_value=500,
-                value=50,
-                step=10,
-            )
+            col1, col2, col3 = st.columns(3)
 
-        submitted = st.form_submit_button("Buscar en OpenAlex")
-
-    if submitted:
-        query = palabras_clave.strip() or tema.strip()
-
-        if not query:
-            st.error("Debes introducir un tema o palabras clave.")
-            return
-
-        try:
-            with st.spinner("Consultando OpenAlex y recuperando evidencia bibliométrica..."):
-                df = search_openalex(
-                    query=query,
-                    year_from=int(year_from),
-                    year_to=int(year_to),
-                    max_results=int(max_results),
+            with col1:
+                year_from = st.number_input(
+                    "Año inicial",
+                    min_value=1900,
+                    max_value=2100,
+                    value=2015,
                 )
 
-            st.session_state.openalex_results = df
-            st.session_state.last_query_metadata = {
-                "tema": tema,
-                "query": query,
-                "year_from": int(year_from),
-                "year_to": int(year_to),
-                "max_results": int(max_results),
-                "source": "OpenAlex",
-            }
+            with col2:
+                year_to = st.number_input(
+                    "Año final",
+                    min_value=1900,
+                    max_value=2100,
+                    value=2026,
+                )
 
-            output_path = PROCESSED_DIR / "openalex_search_results.csv"
-            save_results(df, output_path)
+            with col3:
+                max_results = st.number_input(
+                    "Máximo de resultados",
+                    min_value=10,
+                    max_value=500,
+                    value=50,
+                    step=10,
+                )
 
-            country_df, continent_df = build_and_store_geographic_outputs(df)
+            submitted = st.form_submit_button("Buscar en OpenAlex")
 
-            gap_df, keyword_df, temporal_df = suggest_preliminary_gaps(
-                df,
-                country_df=country_df,
-                continent_df=continent_df,
+        if submitted:
+            query = palabras_clave.strip() or tema.strip()
+
+            if not query:
+                st.error("Debes introducir un tema o palabras clave.")
+            else:
+                try:
+                    with st.spinner("Consultando OpenAlex y recuperando evidencia bibliométrica..."):
+                        df = search_openalex(
+                            query=query,
+                            year_from=int(year_from),
+                            year_to=int(year_to),
+                            max_results=int(max_results),
+                        )
+
+                    st.success(f"Consulta completada. Registros recuperados: {len(df)}")
+                    _run_full_pipeline(df, tema=tema, query=query, year_from=int(year_from), year_to=int(year_to))
+
+                except Exception as error:
+                    st.error("Ocurrió un error al consultar OpenAlex.")
+                    st.exception(error)
+
+        df_current = st.session_state.openalex_results
+
+        if not df_current.empty:
+            st.divider()
+            st.markdown("## Resultados preliminares")
+
+            render_results_summary(df_current)
+
+            display_columns = [
+                "title",
+                "publication_year",
+                "authors",
+                "countries",
+                "institutions",
+                "source",
+                "cited_by_count",
+                "doi",
+                "landing_page_url",
+            ]
+
+            available_columns = [
+                column for column in display_columns if column in df_current.columns
+            ]
+
+            st.dataframe(
+                df_current[available_columns],
+                use_container_width=True,
+                height=420,
             )
 
-            save_gap_outputs(
-                gap_df,
-                keyword_df,
-                temporal_df,
-                output_dir=PROCESSED_DIR,
+            csv_data = df_current.to_csv(index=False, encoding="utf-8-sig")
+
+            st.download_button(
+                label="Descargar resultados CSV",
+                data=csv_data,
+                file_name="openalex_search_results.csv",
+                mime="text/csv",
             )
 
-            st.session_state.gap_results = gap_df
-            st.session_state.keyword_results = keyword_df
-            st.session_state.temporal_results = temporal_df
-
-            trend_df, understudied_df, opportunity_df = generate_extended_insights(
-                df,
-                gap_df=gap_df,
-                keyword_df=keyword_df,
-                temporal_df=temporal_df,
-                country_df=country_df,
-                continent_df=continent_df,
+            st.info(
+                """
+                Estos resultados son preliminares. La interpretación final corresponde al investigador humano.
+                El siguiente desarrollo organizará estos registros por país, institución, autores y publicaciones.
+                """
             )
 
-            save_extended_outputs(
-                trend_df,
-                understudied_df,
-                opportunity_df,
-                output_dir=PROCESSED_DIR,
-            )
+    # ─────────────────────────────────────────────
+    # TAB 2: Carga de CSV exportado desde OpenAlex
+    # ─────────────────────────────────────────────
+    with tab_csv:
+        st.markdown("### Importar resultados desde un archivo CSV de OpenAlex")
 
-            st.session_state.trend_results = trend_df
-            st.session_state.understudied_results = understudied_df
-            st.session_state.opportunity_results = opportunity_df
-
-            # Disparar coincidencia de intereses y notificaciones
-            with st.spinner("Comprobando intereses de investigadores y enviando alertas..."):
-                reports = match_and_notify_users(df)
-
-            st.success(f"Consulta completada. Registros recuperados: {len(df)}")
-            if reports:
-                st.info(f"Se dispararon {len(reports)} alertas de artículos de interés a los investigadores.")
-                for r in reports:
-                    st.caption(f"📢 {r['usuario']} -> {r['interes']}: '{r['articulo']}'")
-            st.caption(f"Archivo guardado en: {output_path}")
-            st.caption(f"Agrupaciones geográficas guardadas en: {PROCESSED_DIR}")
-
-        except Exception as error:
-            st.error("Ocurrió un error al consultar OpenAlex.")
-            st.exception(error)
-
-    df_current = st.session_state.openalex_results
-
-    if not df_current.empty:
-        st.divider()
-        st.markdown("## Resultados preliminares")
-
-        render_results_summary(df_current)
-
-        display_columns = [
-            "title",
-            "publication_year",
-            "authors",
-            "countries",
-            "institutions",
-            "source",
-            "cited_by_count",
-            "doi",
-            "landing_page_url",
-        ]
-
-        available_columns = [
-            column for column in display_columns if column in df_current.columns
-        ]
-
-        st.dataframe(
-            df_current[available_columns],
-            use_container_width=True,
-            height=420,
-        )
-
-        csv_data = df_current.to_csv(index=False, encoding="utf-8-sig")
-
-        st.download_button(
-            label="Descargar resultados CSV",
-            data=csv_data,
-            file_name="openalex_search_results.csv",
-            mime="text/csv",
+        st.write(
+            """
+            Carga un archivo CSV previamente exportado desde OpenAlex (o generado por
+            BiblioMap en una sesión anterior). El sistema procesará los datos, los
+            registrará en la base de datos y enviará alertas automáticas a los
+            investigadores cuyos intereses coincidan con los artículos del archivo.
+            """
         )
 
         st.info(
-            """
-            Estos resultados son preliminares. La interpretación final corresponde al investigador humano.
-            El siguiente desarrollo organizará estos registros por país, institución, autores y publicaciones.
-            """
+            "**Columnas requeridas:** `title`, `doi`, `publication_year`, `authors`, "
+            "`countries`, `institutions`, `source`, `landing_page_url`, `abstract`, `keywords`. "
+            "Las columnas faltantes serán rellenadas con valores vacíos."
         )
+
+        uploaded_file = st.file_uploader(
+            "Selecciona el archivo CSV de OpenAlex",
+            type=["csv"],
+            key="csv_uploader",
+            help="Sube el archivo openalex_search_results.csv exportado desde BiblioMap o desde OpenAlex.",
+        )
+
+        if uploaded_file is not None:
+            try:
+                df_csv = pd.read_csv(uploaded_file, encoding="utf-8")
+            except UnicodeDecodeError:
+                try:
+                    df_csv = pd.read_csv(uploaded_file, encoding="latin-1")
+                except Exception as read_err:
+                    st.error(f"No se pudo leer el archivo: {read_err}")
+                    df_csv = pd.DataFrame()
+
+            if not df_csv.empty:
+                st.success(f"✅ Archivo cargado: **{uploaded_file.name}** | {len(df_csv)} registros, {len(df_csv.columns)} columnas.")
+
+                # ── Columnas detectadas ──────────────────────
+                required_cols = [
+                    "title", "doi", "publication_year", "publication_date",
+                    "type", "cited_by_count", "authors", "institutions",
+                    "countries", "source", "landing_page_url",
+                    "is_open_access", "abstract", "keywords",
+                ]
+                missing_cols = [c for c in required_cols if c not in df_csv.columns]
+                if missing_cols:
+                    st.warning(
+                        f"Las siguientes columnas no están en el CSV y se rellenarán con valores vacíos: "
+                        f"`{'`, `'.join(missing_cols)}`"
+                    )
+                    for col in missing_cols:
+                        df_csv[col] = ""
+
+                # ── Vista previa ─────────────────────────────
+                with st.expander("Vista previa del CSV (primeras 10 filas)", expanded=True):
+                    preview_cols = [c for c in ["title", "publication_year", "authors", "countries", "source", "keywords"] if c in df_csv.columns]
+                    st.dataframe(df_csv[preview_cols].head(10), use_container_width=True)
+
+                # ── Metadatos opcionales del tema ─────────────
+                st.markdown("#### Descripción del tema (opcional)")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    csv_tema = st.text_input(
+                        "Tema de investigación",
+                        value="Importado desde CSV",
+                        key="csv_tema",
+                    )
+                with col_m2:
+                    csv_query = st.text_input(
+                        "Consulta / palabras clave del CSV",
+                        value=uploaded_file.name.replace(".csv", ""),
+                        key="csv_query",
+                    )
+                with col_m3:
+                    years_detected = []
+                    if "publication_year" in df_csv.columns:
+                        years_detected = pd.to_numeric(df_csv["publication_year"], errors="coerce").dropna().astype(int).tolist()
+                    csv_year_from = int(min(years_detected)) if years_detected else 2000
+                    csv_year_to = int(max(years_detected)) if years_detected else 2026
+                    st.metric("Rango de años detectado", f"{csv_year_from} – {csv_year_to}")
+
+                st.divider()
+
+                # ── Botón de procesamiento ───────────────────
+                if st.button(
+                    "🚀 Procesar CSV: cargar a BD, analizar y notificar",
+                    type="primary",
+                    key="btn_process_csv",
+                ):
+                    with st.spinner("Ejecutando pipeline completo de análisis bibliométrico..."):
+                        _run_full_pipeline(
+                            df_csv,
+                            tema=csv_tema,
+                            query=csv_query,
+                            year_from=csv_year_from,
+                            year_to=csv_year_to,
+                        )
+
+                    st.success(
+                        f"✅ Pipeline completado. {len(df_csv)} registros procesados desde **{uploaded_file.name}**."
+                    )
+
+                    st.markdown("---")
+                    st.markdown("#### Resultados del CSV procesado")
+
+                    render_results_summary(df_csv)
+
+                    available_preview = [
+                        c for c in ["title", "publication_year", "authors", "countries", "source", "cited_by_count", "doi"] if c in df_csv.columns
+                    ]
+                    st.dataframe(df_csv[available_preview], use_container_width=True, height=380)
+
+                    st.download_button(
+                        label="Descargar CSV normalizado",
+                        data=df_csv.to_csv(index=False, encoding="utf-8-sig"),
+                        file_name="openalex_search_results.csv",
+                        mime="text/csv",
+                    )
+
+        else:
+            st.markdown(
+                """
+                **¿Cómo obtener el CSV?**
+                1. Realiza una búsqueda en la pestaña **"🔍 Buscar en OpenAlex"**.
+                2. Descarga el archivo usando el botón **"Descargar resultados CSV"**.
+                3. O usa el archivo `openalex_search_results.csv` que ya tienes guardado.
+                4. También puedes exportar directamente desde [OpenAlex.org](https://openalex.org).
+                """
+            )
+
+
 
 
 def page_mapa_mundial() -> None:
@@ -725,17 +912,31 @@ def page_detalle_geografico() -> None:
 
 
 def page_publicaciones() -> None:
-    st.markdown("## Publicaciones")
+    st.markdown("## Publicaciones en Base de Datos")
+    st.write(
+        """
+        Visualiza todas las publicaciones científicas que han sido recuperadas de OpenAlex
+        o cargadas vía CSV, y almacenadas de forma persistente en la base de datos DuckDB.
+        """
+    )
 
-    df = st.session_state.openalex_results
+    df_db = get_publications()
 
-    if df.empty and OPENALEX_RESULTS_PATH.exists():
-        df = pd.read_csv(OPENALEX_RESULTS_PATH)
-        st.session_state.openalex_results = df
-
-    if df.empty:
-        st.warning("Todavía no hay resultados. Primero realiza una búsqueda en la sección 'Buscar tema'.")
+    if df_db.empty:
+        st.info("No hay publicaciones registradas de forma persistente en la base de datos local.")
+        st.write("Realiza una búsqueda o carga un CSV en la sección **Buscar tema** para poblar la base de datos.")
         return
+
+    st.success(f"📂 Se encontraron **{len(df_db)}** publicaciones registradas en la base de datos local.")
+
+    # Filtro por tema de investigación
+    temas = ["Todas"] + sorted([str(t) for t in df_db["tema"].unique() if t and str(t).strip() != "nan"])
+    selected_tema = st.selectbox("Filtrar por Tema de Investigación", temas)
+
+    if selected_tema != "Todas":
+        df_display = df_db[df_db["tema"] == selected_tema]
+    else:
+        df_display = df_db
 
     display_columns = [
         "title",
@@ -744,16 +945,18 @@ def page_publicaciones() -> None:
         "source",
         "doi",
         "landing_page_url",
-        "abstract",
+        "tema",
+        "creado_en"
     ]
 
-    available_columns = [column for column in display_columns if column in df.columns]
+    available_columns = [column for column in display_columns if column in df_display.columns]
 
     st.dataframe(
-        df[available_columns],
+        df_display[available_columns],
         use_container_width=True,
         height=500,
     )
+
 
 
 def page_investigadores() -> None:

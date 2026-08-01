@@ -3,6 +3,7 @@ import duckdb
 from datetime import datetime
 import json
 from typing import Optional
+import pandas as pd
 
 DB_PATH = "data/processed/bibliomap.db"
 
@@ -76,6 +77,29 @@ def initialize_db():
                 creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 enviado BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            );
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS publicaciones (
+                openalex_id VARCHAR PRIMARY KEY,
+                doi VARCHAR,
+                title VARCHAR,
+                publication_year INTEGER,
+                publication_date VARCHAR,
+                type VARCHAR,
+                cited_by_count INTEGER,
+                authors VARCHAR,
+                institutions VARCHAR,
+                countries VARCHAR,
+                source VARCHAR,
+                landing_page_url VARCHAR,
+                is_open_access BOOLEAN,
+                abstract VARCHAR,
+                keywords VARCHAR,
+                tema VARCHAR,
+                query VARCHAR,
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
         
@@ -381,5 +405,79 @@ def has_user_been_notified(user_id: int, title: str) -> bool:
     try:
         r = conn.execute("SELECT id FROM historial_notificaciones WHERE usuario_id = ? AND titulo_articulo = ?", [user_id, title]).fetchone()
         return r is not None
+    finally:
+        conn.close()
+
+def save_publications(df: pd.DataFrame, tema: str = "", query: str = ""):
+    """Saves publications to the DuckDB database (inserts or replaces)."""
+    if df.empty:
+        return
+    conn = get_connection()
+    try:
+        required_cols = [
+            "openalex_id", "doi", "title", "publication_year", "publication_date",
+            "type", "cited_by_count", "authors", "institutions",
+            "countries", "source", "landing_page_url", "is_open_access",
+            "abstract", "keywords"
+        ]
+        
+        df_db = df.copy()
+        
+        for col in required_cols:
+            if col not in df_db.columns:
+                df_db[col] = ""
+                
+        import uuid
+        def ensure_id(row):
+            val = str(row.get("openalex_id", "")).strip()
+            if not val or val == "nan" or val == "None" or pd.isna(row.get("openalex_id")):
+                doi = str(row.get("doi", "")).strip()
+                if doi and doi != "nan" and doi != "None" and not pd.isna(row.get("doi")):
+                    return f"https://openalex.org/W_doi_{hash(doi)}"
+                title = str(row.get("title", "")).strip()
+                if title and title != "nan" and title != "None" and not pd.isna(row.get("title")):
+                    return f"https://openalex.org/W_title_{hash(title)}"
+                return f"https://openalex.org/W_uuid_{uuid.uuid4()}"
+            return val
+            
+        df_db["openalex_id"] = df_db.apply(ensure_id, axis=1)
+        
+        for _, row in df_db.iterrows():
+            conn.execute("""
+                INSERT OR REPLACE INTO publicaciones (
+                    openalex_id, doi, title, publication_year, publication_date,
+                    type, cited_by_count, authors, institutions, countries,
+                    source, landing_page_url, is_open_access, abstract, keywords,
+                    tema, query
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, [
+                str(row.get("openalex_id", "")),
+                str(row.get("doi", "")) if pd.notnull(row.get("doi")) else "",
+                str(row.get("title", "")) if pd.notnull(row.get("title")) else "",
+                int(row.get("publication_year")) if pd.notnull(row.get("publication_year")) and str(row.get("publication_year")).strip() != "" and str(row.get("publication_year")).strip() != "nan" else None,
+                str(row.get("publication_date", "")) if pd.notnull(row.get("publication_date")) else "",
+                str(row.get("type", "")) if pd.notnull(row.get("type")) else "",
+                int(row.get("cited_by_count")) if pd.notnull(row.get("cited_by_count")) and str(row.get("cited_by_count")).strip() != "" and str(row.get("cited_by_count")).strip() != "nan" else 0,
+                str(row.get("authors", "")) if pd.notnull(row.get("authors")) else "",
+                str(row.get("institutions", "")) if pd.notnull(row.get("institutions")) else "",
+                str(row.get("countries", "")) if pd.notnull(row.get("countries")) else "",
+                str(row.get("source", "")) if pd.notnull(row.get("source")) else "",
+                str(row.get("landing_page_url", "")) if pd.notnull(row.get("landing_page_url")) else "",
+                bool(row.get("is_open_access")) if pd.notnull(row.get("is_open_access")) else False,
+                str(row.get("abstract", "")) if pd.notnull(row.get("abstract")) else "",
+                str(row.get("keywords", "")) if pd.notnull(row.get("keywords")) else "",
+                tema,
+                query
+            ])
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_publications() -> pd.DataFrame:
+    """Retrieves all publications from the database as a pandas DataFrame."""
+    conn = get_connection()
+    try:
+        df = conn.execute("SELECT * FROM publicaciones ORDER BY creado_en DESC").df()
+        return df
     finally:
         conn.close()
