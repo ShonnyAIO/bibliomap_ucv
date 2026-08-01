@@ -186,43 +186,41 @@ def load_css() -> None:
     )
 
 
-def render_mobile_menu_button() -> None:
-    """Renders a prominent floating button to open/toggle the left sidebar menu on any device."""
-    st.markdown(
-        """
-        <div class="custom-menu-button-container" style="position: fixed; top: 10px; left: 12px; z-index: 99999999;">
-            <button onclick="
-                const doc = (window.parent && window.parent.document) ? window.parent.document : document;
-                const sidebarBtn = doc.querySelector('button[aria-label*=\\'sidebar\\' i], button[aria-label*=\\'Sidebar\\' i], [data-testid=\\'stSidebarCollapseButton\\'] button, [data-testid=\\'stSidebarCollapseButton\\'], [data-testid=\\'collapsedControl\\'] button, [data-testid=\\'collapsedControl\\']');
-                if (sidebarBtn) {
-                    sidebarBtn.click();
-                }
-            " style="
-                background: linear-gradient(135deg, #0B2E59 0%, #16437E 100%);
-                color: #FFFFFF;
-                border: 1px solid rgba(255, 255, 255, 0.4);
-                border-radius: 8px;
-                padding: 7px 15px;
-                font-size: 14px;
-                font-weight: 700;
-                cursor: pointer;
-                box-shadow: 0 4px 12px rgba(11, 46, 89, 0.4);
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                user-select: none;
-                transition: transform 0.15s ease, box-shadow 0.15s ease;
-            " onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
-                <span style="font-size: 16px; line-height: 1;">☰</span>
-                <span style="font-family: system-ui, -apple-system, sans-serif;">Menú</span>
-            </button>
-        </div>
-        """,
-        unsafe_allow_html=True,
+MENU_OPTIONS = [
+    "Inicio",
+    "Buscar tema",
+    "Mapa mundial",
+    "Detalle geográfico",
+    "Investigadores",
+    "Publicaciones",
+    "Brechas preliminares",
+    "Reporte preliminar",
+    "Usuarios y Notificaciones",
+    "Aprender bibliometría",
+]
+
+
+def render_top_navigation() -> str:
+    """Renders a responsive top navigation dropdown menu accessible directly on mobile/desktop."""
+    current_page = st.session_state.get("current_page", "Inicio")
+    current_idx = MENU_OPTIONS.index(current_page) if current_page in MENU_OPTIONS else 0
+
+    st.markdown('<div class="mobile-top-nav" style="margin-bottom: 1rem;">', unsafe_allow_html=True)
+    selected = st.selectbox(
+        "🗺️ Menú de navegación por módulos",
+        MENU_OPTIONS,
+        index=current_idx,
+        key="top_select_nav",
     )
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.session_state.current_page = selected
+    return selected
 
 
 def init_session_state() -> None:
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Inicio"
+
     if "openalex_results" not in st.session_state:
         st.session_state.openalex_results = pd.DataFrame()
 
@@ -274,23 +272,18 @@ def render_sidebar() -> str:
 
         st.divider()
 
-        menu = st.radio(
-            "Navegación",
-            [
-                "Inicio",
-                "Buscar tema",
-                "Mapa mundial",
-                "Detalle geográfico",
-                "Investigadores",
-                "Publicaciones",
-                "Brechas preliminares",
-                "Reporte preliminar",
-                "Usuarios y Notificaciones",
-                "Aprender bibliometría",
-            ],
-        )
+        current_page = st.session_state.get("current_page", "Inicio")
+        current_idx = MENU_OPTIONS.index(current_page) if current_page in MENU_OPTIONS else 0
 
-    return menu
+        selected = st.radio(
+            "Navegación",
+            MENU_OPTIONS,
+            index=current_idx,
+            key="sidebar_radio_nav",
+        )
+        st.session_state.current_page = selected
+
+    return st.session_state.current_page
 
 
 def render_header() -> None:
@@ -2392,8 +2385,9 @@ def main() -> None:
 
     init_session_state()
     load_css()
-    render_mobile_menu_button()
-    menu = render_sidebar()
+    render_top_navigation()
+    render_sidebar()
+    menu = st.session_state.current_page
 
     if menu == "Inicio":
         page_inicio()
