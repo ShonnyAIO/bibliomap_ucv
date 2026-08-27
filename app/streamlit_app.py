@@ -575,18 +575,36 @@ def page_buscar_tema() -> None:
             else:
                 try:
                     with st.spinner("Consultando OpenAlex y recuperando evidencia bibliométrica..."):
+                        mailto = None
+                        api_key = None
+                        try:
+                            mailto = st.secrets.get("OPENALEX_MAILTO") or st.secrets.get("OPENALEX_EMAIL")
+                            api_key = st.secrets.get("OPENALEX_API_KEY")
+                        except Exception:
+                            pass
+
                         df = search_openalex(
                             query=query,
                             year_from=int(year_from),
                             year_to=int(year_to),
                             max_results=int(max_results),
+                            mailto=mailto,
+                            api_key=api_key,
                         )
 
                     st.success(f"Consulta completada. Registros recuperados: {len(df)}")
                     _run_full_pipeline(df, tema=tema, query=query, year_from=int(year_from), year_to=int(year_to))
 
                 except Exception as error:
-                    st.error("Ocurrió un error al consultar OpenAlex.")
+                    error_msg = str(error)
+                    if "429" in error_msg or "Too Many Requests" in error_msg:
+                        st.error(
+                            "⚠️ **Límite de peticiones alcanzado en OpenAlex (HTTP 429 - Too Many Requests)**\n\n"
+                            "OpenAlex ha recibido demasiadas consultas simultáneas desde la IP compartida del servidor. "
+                            "Por favor espera unos momentos y vuelve a presionar el botón de búsqueda."
+                        )
+                    else:
+                        st.error("Ocurrió un error al consultar OpenAlex.")
                     st.exception(error)
 
         df_current = st.session_state.openalex_results

@@ -13,6 +13,8 @@ Prueba desde terminal:
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +23,7 @@ import requests
 
 
 OPENALEX_WORKS_URL = "https://api.openalex.org/works"
+DEFAULT_MAILTO = os.getenv("OPENALEX_MAILTO", "bibliomap.ucv@gmail.com")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -182,6 +185,7 @@ def search_openalex(
     year_to: Optional[int] = None,
     max_results: int = 100,
     mailto: Optional[str] = None,
+    api_key: Optional[str] = None,
     sort: str = "relevance_score:desc",
 ) -> pd.DataFrame:
     """
@@ -197,7 +201,9 @@ def search_openalex(
         max_results:
             Número máximo de resultados a recuperar.
         mailto:
-            Correo opcional para identificarse ante OpenAlex.
+            Correo opcional para identificarse ante OpenAlex (Polite Pool).
+        api_key:
+            API key opcional de OpenAlex.
         sort:
             Ordenamiento de resultados. Por defecto: relevance_score:desc.
 
@@ -223,18 +229,54 @@ def search_openalex(
     if filters:
         params["filter"] = filters
 
-    if mailto:
-        params["mailto"] = mailto
+    # Identificación Polite Pool / API Key
+    effective_mailto = (mailto or os.getenv("OPENALEX_MAILTO") or DEFAULT_MAILTO).strip()
+    effective_api_key = (api_key or os.getenv("OPENALEX_API_KEY") or "").strip()
+
+    if effective_mailto:
+        params["mailto"] = effective_mailto
+
+    if effective_api_key:
+        params["api_key"] = effective_api_key
+
+    headers: Dict[str, str] = {
+        "User-Agent": f"BiblioMap_UCV/1.0 (mailto:{effective_mailto})" if effective_mailto else "BiblioMap_UCV/1.0",
+        "Accept": "application/json",
+    }
+
+    if effective_api_key:
+        headers["Authorization"] = f"Bearer {effective_api_key}"
 
     records: List[Dict[str, Any]] = []
+    max_retries = 4
+    backoff_delays = [2, 4, 8, 16]
 
     while len(records) < max_results:
-        response = requests.get(
-            OPENALEX_WORKS_URL,
-            params=params,
-            timeout=30,
-        )
-        response.raise_for_status()
+        response = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.get(
+                    OPENALEX_WORKS_URL,
+                    params=params,
+                    headers=headers,
+                    timeout=30,
+                )
+
+                if response.status_code == 429 or response.status_code in (500, 502, 503, 504):
+                    if attempt < max_retries:
+                        time.sleep(backoff_delays[attempt])
+                        continue
+
+                response.raise_for_status()
+                break
+            except requests.exceptions.RequestException as req_err:
+                if attempt < max_retries:
+                    time.sleep(backoff_delays[attempt])
+                    continue
+                raise req_err
+
+        if response is None:
+            break
 
         payload = response.json()
         results = payload.get("results", []) or []
@@ -252,6 +294,7 @@ def search_openalex(
             break
 
         params["page"] += 1
+        time.sleep(0.15)  # Pausa breve de cortesía entre páginas
 
     return pd.DataFrame(records)
 
